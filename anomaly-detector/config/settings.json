@@ -1,0 +1,9 @@
+{
+    "model": "best",
+    "confidence": 0.4,
+    "iou": 0.5,
+    "copy_images": true,
+    "save_database": true,
+    "last_folder": "",
+    "theme": "dark"
+}
