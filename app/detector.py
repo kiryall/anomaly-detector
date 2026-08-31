@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from app.schemas.detection import Detection, DetectionResult
+from app.schemas.detection import BoundingBox, Detection, DetectionResult
 from app.services.logger import logger
 
 
@@ -84,15 +84,24 @@ class Detector:
 
         for i in range(len(boxes)):
             box = boxes[i]
-            class_id = int(box.cls)
-            confidence = float(box.conf)
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            class_id = int(box.cls.item())
+            confidence = float(box.conf.item())
             class_name = result.names.get(class_id, str(class_id))
+
+            bbox = BoundingBox(
+                x1=x1,
+                y1=y1,
+                x2=x2,
+                y2=y2,
+            )
 
             detections.append(
                 Detection(
                     class_id=class_id,
                     class_name=class_name,
                     confidence=confidence,
+                    bbox=bbox,
                 )
             )
 

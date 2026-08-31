@@ -5,12 +5,23 @@ from pathlib import Path
 
 
 @dataclass(slots=True, frozen=True)
+class BoundingBox:
+    """Координаты bounding box."""
+
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
+@dataclass(slots=True, frozen=True)
 class Detection:
     """Одна найденная детекция."""
 
     class_id: int
     class_name: str
     confidence: float
+    bbox: BoundingBox
 
 
 @dataclass(slots=True, frozen=True)

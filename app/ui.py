@@ -406,7 +406,7 @@ class MainWindow:
                 f"Детекция завершена. "
                 f"Всего: {len(results)}, "
                 f"Обнаружено: {state.statistics.anomaly_images}, "
-                f"No detection: {state.statistics.normal_images}",
+                f"No defect: {state.statistics.normal_images}",
                 type="positive",
             )
 
