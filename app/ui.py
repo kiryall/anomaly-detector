@@ -1,36 +1,60 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from tkinter import Tk, filedialog
+from typing import TYPE_CHECKING, Any
 
 from nicegui import ui
 
 from app.config.settings import settings
 from app.image_scanner import ImageScanner
 from app.model_manager import ModelManager
+from app.pipeline import Pipeline
 from app.services.state import state
+
+if TYPE_CHECKING:
+    from nicegui.elements import Label
+    from nicegui.elements import Button
+    from nicegui.elements import Select
+    from nicegui.elements import Number
 
 
 class MainWindow:
     """Главное окно приложения."""
 
+    # Типизированные UI-элементы — инициализируются в build()
+    model_select: Select | None = None
+    folder_label: Label | None = None
+    image_count_label: Label | None = None
+    start_button: Button | None = None
+    report_button: Button | None = None
+    status_label: Label | None = None
+    confidence_input: Number | None = None
+
     def __init__(
         self,
         model_manager: ModelManager,
+        pipeline: Pipeline,
     ) -> None:
 
         self.model_manager = model_manager
+        self.pipeline = pipeline
         self.image_scanner = ImageScanner()
 
-        # UI elements
-        self.model_select = None
-        self.folder_label = None
-        self.image_count_label = None
-        self.start_button = None
-        self.report_button = None
-        self.status_label = None
-        self.progress_bar = None
-        self.progress_label = None
+    # =====================================================
+    # HELPERS — safe UI updates (никогда не упадёт на None)
+    # =====================================================
+
+    def _set_text(
+        self,
+        label: Label | None,
+        text: str,
+    ) -> None:
+        """Безопасно устанавливает текст label."""
+        if label is not None:
+            label.set_text(text)
+
 
     # =====================================================
     # BUILD
@@ -48,13 +72,13 @@ class MainWindow:
 
             self.build_folder_block()
 
+            self.build_confidence_block()
+
             ui.separator()
 
             self.build_detection_block()
 
             self.build_status_block()
-
-            self.build_statistics_block()
 
             self.build_report_block()
 
@@ -112,6 +136,37 @@ class MainWindow:
         )
 
     # =====================================================
+    # CONFIDENCE
+    # =====================================================
+
+    def build_confidence_block(self) -> None:
+        """Блок выбора порога уверенности."""
+
+        with ui.row().classes("w-full items-center"):
+            ui.label("Порог уверенности").classes("w-24")
+
+            self.confidence_input = ui.number(
+                format="%.2f",
+                min=0.0,
+                max=1.0,
+                step=0.05,
+                value=settings.user.confidence,
+                on_change=self.on_confidence_changed,
+            ).classes("w-20")
+
+
+    # =====================================================
+    # CONFIDENCE HANDLER
+    # =====================================================
+
+    def on_confidence_changed(self, event: Any) -> None:
+        """Обрабатывает ручное изменение порога уверенности."""
+
+        if self.confidence_input is not None:
+            settings.user.confidence = self.confidence_input.value
+            settings.save_settings()
+
+    # =====================================================
     # DETECTION
     # =====================================================
 
@@ -130,27 +185,13 @@ class MainWindow:
     # =====================================================
 
     def build_status_block(self) -> None:
-        """Статус и прогресс."""
+        """Статус обработки."""
 
-        self.status_label = ui.label(state.status).classes("text-sm")
+        initial_text = (
+            "Для начала детекции выберите модель и укажите папку с изображениями"
+        )
 
-        self.progress_bar = ui.linear_progress(value=0).classes("w-full")
-
-        self.progress_label = ui.label("0 / 0").classes("text-sm text-gray-500")
-
-    # =====================================================
-    # STATISTICS
-    # =====================================================
-
-    def build_statistics_block(self) -> None:
-        """Статистика обработки."""
-
-        with ui.row().classes("w-full justify-between text-sm"):
-            self.anomaly_label = ui.label("Аномалии: 0")
-
-            self.normal_label = ui.label("Норма: 0")
-
-            self.errors_label = ui.label("Ошибки: 0")
+        self.status_label = ui.label(initial_text).classes("text-xl font-bold")
 
     # =====================================================
     # REPORT
@@ -170,7 +211,7 @@ class MainWindow:
     # MODEL HANDLER
     # =====================================================
 
-    def on_model_changed(self, event) -> None:
+    def on_model_changed(self, event: Any) -> None:
         """Обрабатывает выбор модели."""
 
         model_name = event.value
@@ -240,11 +281,9 @@ class MainWindow:
             state.images.clear()
             state.statistics.reset()
 
-            self.folder_label.set_text(str(folder_path))
-
-            self.image_count_label.set_text("Поддерживаемые изображения не найдены")
-
-            self.status_label.set_text("Папка не готова к обработке")
+            self._set_text(self.folder_label, str(folder_path))
+            self._set_text(self.image_count_label, "Поддерживаемые изображения не найдены")
+            self._set_text(self.status_label, "Папка не готова к обработке")
 
             self.update_start_button()
 
@@ -267,17 +306,9 @@ class MainWindow:
 
         # Обновляем UI
 
-        self.folder_label.set_text(str(folder_path))
-
-        self.image_count_label.set_text(f"Изображений: {len(images)}")
-
-        self.status_label.set_text(state.status)
-
-        self.progress_bar.set_value(0)
-
-        self.progress_label.set_text(f"0 / {len(images)}")
-
-        self.update_statistics()
+        self._set_text(self.folder_label, str(folder_path))
+        self._set_text(self.image_count_label, f"Изображений: {len(images)}")
+        self._set_text(self.status_label, state.status)
 
         self.update_start_button()
 
@@ -339,84 +370,59 @@ class MainWindow:
         state.is_processing = True
         state.status = "Идёт детекция..."
 
-        self.status_label.set_text(state.status)
+        self._set_text(self.status_label, state.status)
 
         self.update_start_button()
 
         try:
-            # TODO:
-            # Здесь позже будет Pipeline.
-            #
-            # Пока заглушка.
+            confidence = float(self.confidence_input.value)
 
-            for image in state.images:
-                await self.process_image_stub(image)
-
-                state.statistics.processed_images += 1
-
-                self.update_progress()
-
-                await ui.run_javascript(
-                    "new Promise(resolve => setTimeout(resolve, 10))"
+            model_info = self.model_manager.get_model(state.selected_model)
+            if model_info is None:
+                ui.notify(
+                    "Не удалось найти выбранную модель.",
+                    type="negative",
                 )
+                return
+
+            results = await asyncio.to_thread(
+                self.pipeline.run,
+                state.selected_folder,
+                model_info.path,
+                confidence,
+            )
+
+            state.statistics.processed_images = len(results)
+            state.statistics.total_images = len(results)
 
             state.status = "Детекция завершена"
 
-            self.status_label.set_text(state.status)
+            self._set_text(self.status_label, state.status)
 
-            self.report_button.enable()
+            if self.report_button is not None:
+                self.report_button.enable()
 
             ui.notify(
-                "Детекция завершена.",
+                f"Детекция завершена. "
+                f"Всего: {len(results)}, "
+                f"Обнаружено: {state.statistics.anomaly_images}, "
+                f"No detection: {state.statistics.normal_images}",
                 type="positive",
+            )
+
+        except (FileNotFoundError, NotADirectoryError, ValueError, RuntimeError) as error:
+            state.status = "Ошибка"
+            self._set_text(self.status_label, state.status)
+
+            ui.notify(
+                f"Ошибка: {error}",
+                type="negative",
             )
 
         finally:
             state.is_processing = False
 
             self.update_start_button()
-
-    async def process_image_stub(
-        self,
-        image: Path,
-    ) -> None:
-        """Временная заглушка инференса."""
-
-        # Здесь позже будет YOLO.
-
-        return
-
-    # =====================================================
-    # PROGRESS
-    # =====================================================
-
-    def update_progress(self) -> None:
-        """Обновляет прогресс."""
-
-        statistics = state.statistics
-
-        self.progress_bar.set_value(statistics.progress)
-
-        self.progress_label.set_text(
-            f"{statistics.processed_images} / {statistics.total_images}"
-        )
-
-        self.update_statistics()
-
-    # =====================================================
-    # STATISTICS
-    # =====================================================
-
-    def update_statistics(self) -> None:
-        """Обновляет статистику."""
-
-        statistics = state.statistics
-
-        self.anomaly_label.set_text(f"Аномалии: {statistics.anomaly_images}")
-
-        self.normal_label.set_text(f"Норма: {statistics.normal_images}")
-
-        self.errors_label.set_text(f"Ошибки: {statistics.errors}")
 
     # =====================================================
     # REPORT

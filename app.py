@@ -13,6 +13,7 @@ def main() -> None:
 
     window = MainWindow(
         model_manager=bootstrap.model_manager,
+        pipeline=bootstrap.pipeline,
     )
 
     window.run()

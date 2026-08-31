@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-SUPPURTED_EXTENSIONS = {".pt", ".pth", ".onnx"}
+SUPPORTED_EXTENSIONS = {".pt", ".pth", ".onnx"}
 
 class UserSettings(BaseModel):
     """Настройки пользователя."""

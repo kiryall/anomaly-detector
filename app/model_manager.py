@@ -1,29 +1,36 @@
 # app/model_manager.py
-# Модуль для управления моделями.
+# Модуль для управления YOLO-моделями.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
-from app.config.models import SUPPURTED_EXTENSIONS
+from nicegui import run
+
+from app.config.models import SUPPORTED_EXTENSIONS
 from app.config.settings import settings
+from app.services.logger import logger
 
 
 @dataclass(slots=True, frozen=True)
 class ModelInfo:
-    """Информация о модели."""
+    """Неизменяемая информация о модели."""
 
     display_name: str   # best
     filename: str       # best.pt
     path: Path
 
+
 class ModelManager:
     """Класс для управления моделями."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._models: list[ModelInfo] = []
         self._classes_cache: dict[str, list[str]] = {}
+        self._lock = threading.Lock()
         self.refresh()
 
     @property
@@ -38,17 +45,24 @@ class ModelManager:
 
     @property
     def names(self) -> list[str]:
-        """Возвращает список имен доступных моделей."""
+        """Возвращает список display_name доступных моделей."""
         return [model.display_name for model in self._models]
 
+    # ---- Lifecycle ----
+
     def refresh(self) -> None:
-        """Сканирует каталог моделей."""
+        """Сканирует каталог моделей (синхронно, без загрузки YOLO)."""
 
         self._models.clear()
         self._classes_cache.clear()
 
-        for file in sorted(settings.paths.models.iterdir()):
-            if file.is_file() and file.suffix.lower() in SUPPURTED_EXTENSIONS:
+        models_dir = settings.paths.models
+        if not models_dir.exists():
+            logger.warning("Каталог моделей не найден: %s", models_dir)
+            return
+
+        for file in sorted(models_dir.iterdir()):
+            if file.is_file() and file.suffix.lower() in SUPPORTED_EXTENSIONS:
                 self._models.append(
                     ModelInfo(
                         display_name=file.stem,
@@ -57,21 +71,23 @@ class ModelManager:
                     )
                 )
 
-        from app.services.logger import logger
-
         logger.info("Модели обнаружены: %d", len(self._models))
+
+    # ---- Lookup ----
 
     def exists(self, model_name: str) -> bool:
         """Проверяет, существует ли модель с указанным именем."""
         return self.get_model(model_name) is not None
 
     def get_model(self, model_name: str) -> ModelInfo | None:
-        """Получить информацию о модели по имени."""
+        """Получить информацию о модели по display_name или filename."""
         for model in self._models:
             if model.filename == model_name or model.display_name == model_name:
                 return model
         return None
-    
+
+    # ---- Class helpers ----
+
     def get_output_directories(self, model_name: str) -> list[Path]:
         """Возвращает список выходных директорий для классов модели."""
         classes = self.get_model_classes(model_name)
@@ -81,30 +97,67 @@ class ModelManager:
         folder_key = model_info.display_name if model_info else model_name
         return [settings.paths.get_output_dir(folder_key, cls) for cls in classes]
 
+    # ---- Class loading (cached, thread-safe) ----
+
     def get_model_classes(self, model_name: str) -> list[str] | None:
-        """Получить список классов модели по имени."""
-        if model_name in self._classes_cache:
-            return self._classes_cache[model_name]
+        """Синхронно получает список классов модели (из кэша или с диска)."""
+        cached: Optional[list[str]]
+
+        with self._lock:
+            cached = self._classes_cache.get(model_name)
+
+        if cached is not None:
+            return cached
 
         model_info = self.get_model(model_name)
         if model_info is None:
             return None
 
+        classes = self._load_classes_blocking(model_info)
+
+        if classes is not None:
+            with self._lock:
+                self._classes_cache[model_name] = classes
+
+        return classes
+
+    async def get_model_classes_async(self, model_name: str) -> list[str] | None:
+        """Асинхронно получает классы модели — загружает через cpu_bound."""
+        cached: Optional[list[str]]
+
+        with self._lock:
+            cached = self._classes_cache.get(model_name)
+
+        if cached is not None:
+            return cached
+
+        model_info = self.get_model(model_name)
+        if model_info is None:
+            return None
+
+        # Загружаем YOLO вне event loop
+        classes = await run.cpu_bound(lambda: self._load_classes_blocking(model_info))
+
+        if classes is not None:
+            with self._lock:
+                self._classes_cache[model_name] = classes
+
+        return classes
+
+    @staticmethod
+    def _load_classes_blocking(model_info: ModelInfo) -> list[str] | None:
+        """Внутренний метод — блокирующая загрузка классов YOLO."""
         try:
             from ultralytics import YOLO
 
             model = YOLO(model_info.path)
             if hasattr(model, "names"):
                 classes = list(model.names.values())
-                self._classes_cache[model_name] = classes
-                from app.services.logger import logger
-
-                logger.info("Классы модели %s загружены: %s", model_name, classes)
+                logger.info("Классы модели %s: %s", model_info.filename, classes)
                 return classes
         except ValueError as e:
-            from app.services.logger import logger
-
-            logger.error("Ошибка загрузки модели %s: %s", model_name, e)
-            print(f"Ошибка при загрузке модели {model_name}: {e}")
+            logger.error("Ошибка загрузки модели %s: %s", model_info.filename, e)
+            print(f"Ошибка при загрузке модели {model_info.filename}: {e}")
 
         return None
+

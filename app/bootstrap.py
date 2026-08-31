@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from app.config.settings import settings
+from app.image_scanner import ImageScanner
 from app.model_manager import ModelManager
+from app.pipeline import Pipeline
+from app.predictor import Predictor
 
 
 class Bootstrap:
@@ -19,6 +22,12 @@ class Bootstrap:
         self.init_database()
 
         self.discover_models()
+
+        self.init_predictor()
+
+        self.init_image_scanner()
+
+        self.init_pipeline()
 
     def create_directories(self):
         """Создание необходимых директорий."""
@@ -47,3 +56,18 @@ class Bootstrap:
     def discover_models(self):
 
         ...
+
+    def init_predictor(self):
+        """Инициализация Predictor."""
+        self.predictor = Predictor()
+
+    def init_image_scanner(self):
+        """Инициализация ImageScanner."""
+        self.image_scanner = ImageScanner()
+
+    def init_pipeline(self):
+        """Инициализация Pipeline."""
+        self.pipeline = Pipeline(
+            image_scanner=self.image_scanner,
+            paths=settings.paths,
+        )
