@@ -5,6 +5,7 @@ from app.image_scanner import ImageScanner
 from app.model_manager import ModelManager
 from app.pipeline import Pipeline
 from app.predictor import Predictor
+from app.report import ReportService
 
 
 class Bootstrap:
@@ -28,6 +29,8 @@ class Bootstrap:
         self.init_image_scanner()
 
         self.init_pipeline()
+
+        self.init_report_service()
 
     def create_directories(self):
         """Создание необходимых директорий."""
@@ -71,3 +74,7 @@ class Bootstrap:
             image_scanner=self.image_scanner,
             paths=settings.paths,
         )
+
+    def init_report_service(self):
+        """Инициализация ReportService."""
+        self.report_service = ReportService()

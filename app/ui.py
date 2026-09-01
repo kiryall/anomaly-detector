@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import signal
+from datetime import datetime
 from pathlib import Path
 from tkinter import Tk, filedialog
 from typing import TYPE_CHECKING, Any
@@ -19,6 +22,8 @@ if TYPE_CHECKING:
     from nicegui.elements import Select
     from nicegui.elements import Number
 
+    from app.report import ReportService
+
 
 class MainWindow:
     """Главное окно приложения."""
@@ -36,11 +41,19 @@ class MainWindow:
         self,
         model_manager: ModelManager,
         pipeline: Pipeline,
+        report_service: ReportService,
     ) -> None:
 
         self.model_manager = model_manager
         self.pipeline = pipeline
         self.image_scanner = ImageScanner()
+        self.report_service = report_service
+
+        # Контекст последнего запуска для отчёта
+        self._last_results: tuple[Any, ...] = ()
+        self._last_model_name: str = ""
+        self._last_source_folder: Path | None = None
+        self._last_confidence: float = 0.0
 
     # =====================================================
     # HELPERS — safe UI updates (никогда не упадёт на None)
@@ -81,6 +94,8 @@ class MainWindow:
             self.build_status_block()
 
             self.build_report_block()
+
+            self.build_shutdown_block()
 
     # =====================================================
     # MODEL
@@ -206,6 +221,21 @@ class MainWindow:
         ).classes("w-full")
 
         self.report_button.disable()
+
+    # =====================================================
+    # SHUTDOWN
+    # =====================================================
+
+    def build_shutdown_block(self) -> None:
+        """Кнопка завершения работы приложения."""
+
+        ui.separator()
+
+        ui.button(
+            "Завершить работу",
+            icon="power_settings_new",
+            on_click=self.confirm_shutdown,
+        ).props("color=negative")
 
     # =====================================================
     # MODEL HANDLER
@@ -392,6 +422,12 @@ class MainWindow:
                 confidence,
             )
 
+            # Сохраняем контекст для отчёта
+            self._last_results = results
+            self._last_model_name = model_info.display_name
+            self._last_source_folder = state.selected_folder
+            self._last_confidence = confidence
+
             state.statistics.processed_images = len(results)
             state.statistics.total_images = len(results)
 
@@ -431,13 +467,93 @@ class MainWindow:
     def save_report(self) -> None:
         """Сохраняет отчёт."""
 
-        # TODO:
-        # Здесь позже будет ReportService.
+        if not self._last_results:
+            ui.notify(
+                "Сначала выполните детекцию.",
+                type="warning",
+            )
+            return
+
+        if not self._last_source_folder:
+            ui.notify(
+                "Недоступна информация о запуске.",
+                type="warning",
+            )
+            return
+
+        from app.config.paths import Paths
+
+        paths = Paths()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_filename = f"report_{timestamp}.xlsx"
+        output_path = paths.reports / report_filename
+
+        report_service = self.report_service
+
+        try:
+            saved_path = report_service.save_excel(
+                results=self._last_results,
+                statistics=state.statistics,
+                output_path=output_path,
+                model_name=self._last_model_name,
+                source_folder=self._last_source_folder,
+                confidence_threshold=self._last_confidence,
+            )
+
+            ui.notify(
+                f"Отчёт сохранён:\n{saved_path}",
+                type="positive",
+            )
+
+        except OSError as error:
+            ui.notify(
+                f"Ошибка сохранения отчёта: {error}",
+                type="negative",
+            )
+
+    # =====================================================
+    # SHUTDOWN
+    # =====================================================
+
+    def confirm_shutdown(self) -> None:
+        """Запрашивает подтверждение завершения."""
+
+        if state.is_processing:
+            ui.notify(
+                "Нельзя завершить программу во время обработки.\n"
+                "Дождитесь завершения обработки перед закрытием программы.",
+                type="warning",
+            )
+            return
+
+        with ui.dialog() as dialog, ui.card():
+            ui.label("Завершение программы").classes("text-h6")
+            ui.label("Вы уверены, что хотите завершить работу приложения?")
+            with ui.row():
+                ui.button("Отмена", on_click=dialog.close)
+                ui.button(
+                    "Завершить",
+                    on_click=lambda: (
+                        dialog.close(),
+                        self.shutdown_application(),
+                    ),
+                ).props("color=negative")
+
+        dialog.open()
+
+    def shutdown_application(self) -> None:
+        """Завершает работу приложения."""
 
         ui.notify(
-            "Формирование отчёта пока не реализовано.",
+            "Программа завершает работу. "
+            "Закройте вкладку браузера.",
             type="info",
         )
+
+        async def _do_shutdown() -> None:
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        ui.timer(0.5, lambda: asyncio.ensure_future(_do_shutdown()), once=True)
 
     # =====================================================
     # RUN
@@ -450,5 +566,8 @@ class MainWindow:
 
         ui.run(
             title="Anomaly Detector",
+            host="127.0.0.1",
+            port=8080,
             reload=False,
+            show=True,
         )

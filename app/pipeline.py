@@ -23,6 +23,13 @@ class Pipeline:
     ) -> None:
         self._image_scanner = image_scanner
         self._paths = paths
+        self._results: list[DetectionResult] = []
+        self._model_name: str = "unknown"
+
+    @property
+    def results(self) -> tuple[DetectionResult, ...]:
+        """Результаты текущего запуска."""
+        return tuple(self._results)
 
     def run(
         self,
@@ -56,6 +63,9 @@ class Pipeline:
         predictor = Predictor()
         predictor.load_model(model_path)
 
+        self._model_name = model_path.stem if model_path else "unknown"
+        self._results.clear()
+
         results: list[DetectionResult] = []
 
         for image_path in images:
@@ -64,7 +74,9 @@ class Pipeline:
                     predictor,
                     image_path,
                     confidence_threshold,
+                    self._model_name,
                 )
+                self._results.append(result)
                 results.append(result)
 
                 valid_count = sum(
@@ -102,13 +114,14 @@ class Pipeline:
             state.statistics.errors,
         )
 
-        return results
+        return tuple(self._results)
 
     def _process_image(
         self,
         predictor: Predictor,
         image_path: Path,
         confidence_threshold: float,
+        model_name: str,
     ) -> DetectionResult:
         """Обрабатывает одно изображение: инференс + классификация + копирование."""
         result = predictor.predict(
@@ -122,7 +135,7 @@ class Pipeline:
             if d.confidence >= confidence_threshold
         )
 
-        model_name = predictor.model_path.stem if predictor.model_path else "unknown"
+        output_paths: list[Path] = []
 
         if not valid_detections:
             # Нет валидных детекций → no_defect (оригинал без изменений)
@@ -132,6 +145,7 @@ class Pipeline:
 
             destination = self._get_unique_destination(output_dir / image_path.name)
             shutil.copy2(image_path, destination)
+            output_paths.append(destination)
 
             logger.info(
                 "  %s → no_defect/",
@@ -161,6 +175,7 @@ class Pipeline:
                     output_dir / image_path.name
                 )
                 self._save_image(annotated_image, destination)
+                output_paths.append(destination)
 
                 logger.info(
                     "  %s → %s/",
@@ -168,7 +183,13 @@ class Pipeline:
                     safe_name,
                 )
 
-        return result
+        return DetectionResult(
+            image_path=image_path,
+            has_anomaly=bool(valid_detections),
+            detections=valid_detections,
+            inference_time=result.inference_time,
+            output_paths=tuple(output_paths),
+        )
 
     def _draw_detections(
         self,

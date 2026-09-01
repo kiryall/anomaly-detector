@@ -32,6 +32,7 @@ class DetectionResult:
     has_anomaly: bool
     detections: tuple[Detection, ...]
     inference_time: float
+    output_paths: tuple[Path, ...] = ()
 
     @property
     def detection_count(self) -> int:
