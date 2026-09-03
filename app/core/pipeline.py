@@ -5,8 +5,8 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from app.image_scanner import ImageScanner
-from app.predictor import Predictor
+from app.io.image_scanner import ImageScanner
+from app.core.predictor import Predictor
 from app.schemas.detection import DetectionResult
 from app.services.logger import logger
 from app.services.state import state

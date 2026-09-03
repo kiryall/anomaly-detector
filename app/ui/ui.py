@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING, Any
 from nicegui import ui
 
 from app.config.settings import settings
-from app.image_scanner import ImageScanner
-from app.model_manager import ModelManager
-from app.pipeline import Pipeline
+from app.io.image_scanner import ImageScanner
+from app.core.model_manager import ModelManager
+from app.core.pipeline import Pipeline
 from app.services.state import state
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from nicegui.elements import Select
     from nicegui.elements import Number
 
-    from app.report import ReportService
+    from app.reports.report import ReportService
 
 
 class MainWindow:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.detector import Detector
+from app.core.detector import Detector
 from app.schemas.detection import DetectionResult
 from app.services.logger import logger
 

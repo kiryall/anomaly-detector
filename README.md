@@ -17,50 +17,60 @@
 ## Архитектура
 
 ```
-UI → Pipeline → Predictor → Detector → YOLO
+EntryPoint → UI → Pipeline → Predictor → Detector → YOLO
 ```
 
-- **UI** — NiceGUI-интерфейс для выбора модели, папки и запуска детекции
-- **Pipeline** — оркестрация обработки: сканирование → инференс → фильтрация → сохранение
-- **Predictor** — высокий уровень: управление моделью и инференс
-- **Detector** — низкий уровень: адаптер для Ultralytics YOLO
-- **ModelManager** — обнаружение и кэширование моделей
-- **ReportService** — формирование Excel-отчётов
+Модули:
+
+- **entrypoint** — точка входа (`main.py`, `bootstrap.py`)
+- **ui** — NiceGUI-интерфейс (`MainWindow`)
+- **core** — ядро: `Pipeline`, `Predictor`, `Detector`, `ModelManager`
+- **io** — ввод-вывод: `ImageScanner`
+- **reports** — отчёты: `ReportService`
+- **config** — конфигурация: `Settings`, `Paths`, `UserSettings`
+- **services** — сервисы: `state`, `logger`
+- **schemas** — схемы данных: `Detection`, `DetectionResult`, `BoundingBox`
 
 ## Структура проекта
 
 ```
 anomaly-detector/
-├── app/                    # Исходный код приложения
-│   ├── main.py             # Точка входа
-│   ├── bootstrap.py        # Инициализация и связывание компонентов
-│   ├── ui.py               # NiceGUI-интерфейс
-│   ├── pipeline.py         # Pipeline обработки изображений
-│   ├── predictor.py        # Сервис предсказаний
-│   ├── detector.py         # Адаптер YOLO
-│   ├── model_manager.py    # Управление моделями
-│   ├── image_scanner.py    # Сканирование папки изображений
-│   ├── report.py           # Формирование Excel-отчётов
-│   ├── config/             # Конфигурация
-│   │   ├── settings.py     # Settings (Pydantic)
-│   │   ├── paths.py        # Пути (dev/EXE режимы)
-│   │   └── models.py       # UserSettings, SUPPORTED_EXTENSIONS
-│   ├── services/           # Сервисы
-│   │   ├── state.py        # Состояние приложения
-│   │   └── logger.py       # Логирование
-│   ├── schemas/            # Схемы данных
-│   │   └── detection.py    # Detection, DetectionResult, BoundingBox
-│   ├── pyproject.toml      # Зависимости Python
-│   └── uv.lock             # Блок зависимостей
-├── models/                 # YOLO-модели (.pt)
-├── data/                   # Рабочие данные
-│   ├── database/           # База данных
-│   ├── output/             # Результаты детекции
-│   ├── reports/            # Excel-отчёты
-│   └── logs/               # Логи приложения
-├── run.bat                 # Скрипт запуска
-├── README.md               # Документация для разработчиков
-└── USER_GUIDE.md           # Инструкция пользователя
+├── app/                        # Исходный код приложения
+│   ├── entrypoint/             # Точка входа
+│   │   ├── main.py             # Точка входа (run.bat, uv run)
+│   │   ├── __main__.py         # Запуск через python -m app
+│   │   └── bootstrap.py        # Инициализация и связывание компонентов
+│   ├── ui/                     # Пользовательский интерфейс
+│   │   └── ui.py               # NiceGUI-интерфейс (MainWindow)
+│   ├── core/                   # Ядро приложения
+│   │   ├── pipeline.py         # Pipeline обработки изображений
+│   │   ├── predictor.py        # Сервис предсказаний
+│   │   ├── detector.py         # Адаптер YOLO
+│   │   └── model_manager.py    # Управление моделями
+│   ├── io/                     # Ввод-вывод
+│   │   └── image_scanner.py    # Сканирование папки изображений
+│   ├── reports/                # Отчёты
+│   │   └── report.py           # Формирование Excel-отчётов
+│   ├── config/                 # Конфигурация
+│   │   ├── settings.py         # Settings (Pydantic)
+│   │   ├── paths.py            # Пути (dev/EXE режимы)
+│   │   └── models.py           # UserSettings, SUPPORTED_EXTENSIONS
+│   ├── services/               # Сервисы
+│   │   ├── state.py            # Состояние приложения
+│   │   └── logger.py           # Логирование
+│   ├── schemas/                # Схемы данных
+│   │   └── detection.py        # Detection, DetectionResult, BoundingBox
+│   ├── pyproject.toml          # Зависимости Python
+│   └── uv.lock                 # Блок зависимостей
+├── models/                     # YOLO-модели (.pt)
+├── data/                       # Рабочие данные
+│   ├── database/               # База данных
+│   ├── output/                 # Результаты детекции
+│   ├── reports/                # Excel-отчёты
+│   └── logs/                   # Логи приложения
+├── run.bat                     # Скрипт запуска
+├── README.md                   # Документация для разработчиков
+└── USER_GUIDE.md               # Инструкция пользователя
 ```
 
 ## Требования
@@ -84,8 +94,6 @@ uv sync
 cd anomaly-detector
 .\run.bat
 ```
-
-Приложение запустится по адресу `http://127.0.0.1:8080`.
 
 Приложение запустится по адресу `http://127.0.0.1:8080`.
 
@@ -125,7 +133,10 @@ cd app
 uv sync
 
 # Запуск в режиме разработки
-uv run app.py
+uv run --directory app python entrypoint/main.py
+
+# Или из корня проекта
+uv run --directory app python -m app
 
 # Добавление новой зависимости
 uv add <package-name>

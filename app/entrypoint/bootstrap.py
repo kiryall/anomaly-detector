@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from app.config.settings import settings
-from app.image_scanner import ImageScanner
-from app.model_manager import ModelManager
-from app.pipeline import Pipeline
-from app.predictor import Predictor
-from app.report import ReportService
+from app.io.image_scanner import ImageScanner
+from app.core.model_manager import ModelManager
+from app.core.pipeline import Pipeline
+from app.core.predictor import Predictor
+from app.reports.report import ReportService
 
 
 class Bootstrap:

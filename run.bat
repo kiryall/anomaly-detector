@@ -18,7 +18,7 @@ echo.
 echo Starting application...
 echo.
 
-uv run --directory app python main.py
+uv run --directory app python entrypoint/main.py
 
 if errorlevel 1 (
     echo.
