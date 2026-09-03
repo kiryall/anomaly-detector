@@ -1,8 +1,9 @@
 # app/model_manager.py
-# Модуль для управления YOLO-моделями.
+# Модуль для управления ONNX-моделями.
 
 from __future__ import annotations
 
+import json
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +11,6 @@ from typing import Optional
 
 from nicegui import run
 
-from app.config.models import SUPPORTED_EXTENSIONS
 from app.config.settings import settings
 from app.services.logger import logger
 
@@ -20,12 +20,12 @@ class ModelInfo:
     """Неизменяемая информация о модели."""
 
     display_name: str   # best
-    filename: str       # best.pt
+    filename: str       # best.onnx
     path: Path
 
 
 class ModelManager:
-    """Класс для управления моделями."""
+    """Класс для управления ONNX-моделями."""
 
     def __init__(self) -> None:
         self._models: list[ModelInfo] = []
@@ -51,7 +51,7 @@ class ModelManager:
     # ---- Lifecycle ----
 
     def refresh(self) -> None:
-        """Сканирует каталог моделей (синхронно, без загрузки YOLO)."""
+        """Сканирует каталог моделей (синхронно, без загрузки модели)."""
 
         self._models.clear()
         self._classes_cache.clear()
@@ -62,7 +62,7 @@ class ModelManager:
             return
 
         for file in sorted(models_dir.iterdir()):
-            if file.is_file() and file.suffix.lower() in SUPPORTED_EXTENSIONS:
+            if file.is_file() and file.suffix.lower() == ".onnx":
                 self._models.append(
                     ModelInfo(
                         display_name=file.stem,
@@ -70,8 +70,6 @@ class ModelManager:
                         path=file,
                     )
                 )
-
-        logger.info("Модели обнаружены: %d", len(self._models))
 
     # ---- Lookup ----
 
@@ -135,8 +133,9 @@ class ModelManager:
         if model_info is None:
             return None
 
-        # Загружаем YOLO вне event loop
-        classes = await run.cpu_bound(lambda: self._load_classes_blocking(model_info))
+        classes = await run.cpu_bound(
+            lambda: self._load_classes_blocking(model_info)
+        )
 
         if classes is not None:
             with self._lock:
@@ -146,18 +145,53 @@ class ModelManager:
 
     @staticmethod
     def _load_classes_blocking(model_info: ModelInfo) -> list[str] | None:
-        """Внутренний метод — блокирующая загрузка классов YOLO."""
+        """Внутренний метод — блокирующая загрузка классов ONNX."""
         try:
-            from ultralytics import YOLO
+            # Пытаемся загрузить из ONNX metadata
+            import onnxruntime as ort
 
-            model = YOLO(model_info.path)
-            if hasattr(model, "names"):
-                classes = list(model.names.values())
-                logger.info("Классы модели %s: %s", model_info.filename, classes)
-                return classes
-        except ValueError as e:
-            logger.error("Ошибка загрузки модели %s: %s", model_info.filename, e)
-            print(f"Ошибка при загрузке модели {model_info.filename}: {e}")
+            session = ort.InferenceSession(str(model_info.path))
+            meta = session.get_modelmeta().custom_metadata_map
+            names_raw = meta.get("names", "")
 
+            if names_raw:
+                loaded = eval(names_raw)  # noqa: S307
+                if loaded and isinstance(loaded, dict):
+                    # Keys могут быть int или str
+                    classes = [loaded.get(i, loaded.get(str(i), "?")) for i in sorted(loaded.keys(), key=lambda x: int(x) if isinstance(x, str) else x)]
+                    logger.info(
+                        "Классы модели %s (из ONNX): %s",
+                        model_info.filename,
+                        classes,
+                    )
+                    return classes
+
+            # Fallback: sidecar JSON
+            names_json = model_info.path.with_suffix(".json")
+            if names_json.exists():
+                data = json.loads(names_json.read_text("utf-8"))
+                names_dict = data.get("names", {})
+                if names_dict:
+                    classes = [
+                        names_dict.get(str(i), names_dict.get(i, "?"))
+                        for i in sorted(names_dict.keys(), key=lambda x: int(x) if isinstance(x, str) else x)
+                    ]
+                    logger.info(
+                        "Классы модели %s (из JSON): %s",
+                        model_info.filename,
+                        classes,
+                    )
+                    return classes
+
+        except Exception as e:
+            logger.error(
+                "Ошибка загрузки классов модели %s: %s",
+                model_info.filename,
+                e,
+            )
+
+        logger.warning(
+            "Не удалось загрузить классы для модели %s",
+            model_info.filename,
+        )
         return None
-

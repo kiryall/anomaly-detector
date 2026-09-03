@@ -66,6 +66,14 @@ class Pipeline:
         self._model_name = model_path.stem if model_path else "unknown"
         self._results.clear()
 
+        logger.info(
+            "Запуск детекции: модель=%s, папка=%s, изображений=%d, confidence=%.2f",
+            model_path.name,
+            input_folder,
+            len(images),
+            confidence_threshold,
+        )
+
         results: list[DetectionResult] = []
 
         for image_path in images:
@@ -107,7 +115,7 @@ class Pipeline:
                 )
 
         logger.info(
-            "Pipeline завершён: всего=%d, аномалии=%d, норма=%d, ошибки=%d",
+            "Детекция завершена: всего=%d, аномалии=%d, норма=%d, ошибки=%d",
             len(results),
             state.statistics.anomaly_images,
             state.statistics.normal_images,
@@ -124,6 +132,8 @@ class Pipeline:
         model_name: str,
     ) -> DetectionResult:
         """Обрабатывает одно изображение: инференс + классификация + копирование."""
+        logger.info("Обработка: %s", image_path.name)
+
         result = predictor.predict(
             image_path=image_path,
             confidence=confidence_threshold,

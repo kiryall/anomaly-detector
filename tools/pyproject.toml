@@ -1,0 +1,9 @@
+[project]
+name = "anomaly-detector-tools"
+version = "0.1.0"
+description = "Development tools for anomaly-detector (export, tests)"
+requires-python = ">=3.11"
+dependencies = [
+    "ultralytics>=8.4.117",
+    "onnxruntime>=1.20.0",
+]

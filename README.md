@@ -1,11 +1,11 @@
 # Anomaly Detector
 
-Система обнаружения аномалий на изображениях с использованием YOLO-моделей. Приложение обеспечивает автоматическую классификацию изображений по категориям дефектов, визуализацию результатов с bounding boxes и формирование детализированных отчётов.
+Система обнаружения аномалий на изображениях с использованием ONNX Runtime. Приложение обеспечивает автоматическую классификацию изображений по категориям дефектов, визуализацию результатов с bounding boxes и формирование детализированных отчётов.
 
 ## Возможности
 
-- **YOLO detection** — использование моделей Ultralytics YOLO для обнаружения аномалий
-- **Выбор модели** — поддержка нескольких YOLO-моделей (.pt, .pth, .onnx)
+- **ONNX Runtime** — высокопроизводительный инференс через ONNX Runtime (CPU)
+- **Выбор модели** — поддержка ONNX-моделей (.onnx)
 - **Выбор папки изображений** — пакетная обработка директории с фотографиями
 - **Настройка confidence** — настраиваемый порог уверенности детекции (0.0–1.0)
 - **Multi-class detection** — изображение может быть отнесено к нескольким классам дефектов одновременно
@@ -17,7 +17,7 @@
 ## Архитектура
 
 ```
-EntryPoint → UI → Pipeline → Predictor → Detector → YOLO
+EntryPoint → UI → Pipeline → Predictor → Detector → ONNX Runtime
 ```
 
 Модули:
@@ -45,7 +45,7 @@ anomaly-detector/
 │   ├── core/                   # Ядро приложения
 │   │   ├── pipeline.py         # Pipeline обработки изображений
 │   │   ├── predictor.py        # Сервис предсказаний
-│   │   ├── detector.py         # Адаптер YOLO
+│   │   ├── detector.py         # Адаптер ONNX Runtime
 │   │   └── model_manager.py    # Управление моделями
 │   ├── io/                     # Ввод-вывод
 │   │   └── image_scanner.py    # Сканирование папки изображений
@@ -62,13 +62,23 @@ anomaly-detector/
 │   │   └── detection.py        # Detection, DetectionResult, BoundingBox
 │   ├── pyproject.toml          # Зависимости Python
 │   └── uv.lock                 # Блок зависимостей
-├── models/                     # YOLO-модели (.pt)
+├── tools/                      # Development-инструменты
+│   ├── export_to_onnx.py       # Экспорт .pt → .onnx
+│   ├── pyproject.toml          # Dev-зависимости (ultralytics)
+│   ├── .venv/                  # Окружение для экспорта
+│   └── run_export.bat          # Скрипт запуска экспорта
+├── tests/                      # Тесты
+│   ├── test_onnx.py            # Regression test PT vs ONNX
+│   └── test_production_onnx.py # Production ONNX runtime test
+├── models/                     # ONNX-модели (.onnx)
+│   ├── best.onnx               # Модель
+│   └── best.json               # Имена классов (sidecar)
 ├── data/                       # Рабочие данные
 │   ├── database/               # База данных
 │   ├── output/                 # Результаты детекции
 │   ├── reports/                # Excel-отчёты
 │   └── logs/                   # Логи приложения
-├── run.bat                     # Скрипт запуска
+├── run.bat                     # Скрипт запуска приложения
 ├── README.md                   # Документация для разработчиков
 └── USER_GUIDE.md               # Инструкция пользователя
 ```
@@ -99,18 +109,89 @@ cd anomaly-detector
 
 ## Модели
 
-YOLO-модели помещаются в корневую папку `models/`:
+ONNX-модели помещаются в корневую папку `models/`:
 
 ```
 anomaly-detector/
 └── models/
-    ├── best.pt
-    └── new_model.pt
+    ├── best.onnx
+    └── best.json
 ```
 
-Поддерживаемые форматы: `.pt`, `.pth`, `.onnx`.
+Поддерживаемый формат: **`.onnx`**.
 
-После размещения новой модели — обновите список в интерфейсе или перезапустите приложение.
+Файл `.json` рядом с `.onnx` содержит имена классов (sidecar). Если классы уже встроены в ONNX metadata, `.json` создаётся автоматически скриптом экспорта.
+
+### Development-инструменты (`tools/`)
+
+Папка `tools/` содержит утилиты для разработки и экспорта моделей из YOLO (PyTorch) в формат ONNX, который используется приложением.
+
+| Файл | Описание |
+|------|----------|
+| `export_to_onnx.py` | Python-скрипт экспорта YOLO-модели (.pt) в ONNX (.onnx) |
+| `run_export.bat` | Интерактивный батник для запуска экспорта |
+| `pyproject.toml` | Dev-зависимости (ultralytics, onnxruntime) |
+| `.venv/` | Изолированное окружение Python для экспорта |
+
+#### `export_to_onnx.py` — экспорт модели
+
+Конвертирует YOLO-модель из формата PyTorch (`.pt`) в ONNX (`.onnx`), проверяет корректность через ONNX Runtime и создаёт sidecar-файл с именами классов.
+
+**Использование:**
+
+```powershell
+cd anomaly-detector\tools
+python export_to_onnx.py ..\models\best.pt
+```
+
+С параметрами:
+
+```powershell
+python export_to_onnx.py ..\models\best.pt --output ..\models\new_model.onnx --imgsz 640
+```
+
+**Параметры:**
+
+| Параметр | Описание | По умолчанию |
+|----------|----------|:---:|
+| `model_pt` | Путь к модели `.pt` | (обязательный) |
+| `--output`, `-o` | Путь для выходного `.onnx` | Рядом с `.pt` |
+| `--imgsz` | Размер входа модели | `640` |
+
+Скрипт автоматически использует Python из `tools/.venv/`.
+
+#### `run_export.bat` — интерактивный запуск
+
+Удобный способ запуска экспорта: двойным кликом открывается консоль, куда вводится путь к модели.
+
+**Использование:**
+
+```powershell
+cd anomaly-detector\tools
+run_export.bat
+```
+
+После запуска появится запрос:
+
+```
+Enter path to model (.pt): ..\models\best.pt
+```
+
+Введите путь и нажмите Enter — скрипт выполнит экспорт.
+
+Также можно передать путь через аргумент:
+
+```powershell
+run_export.bat ..\models\best.pt
+```
+
+**Что делает скрипт:**
+
+1. Загружает модель через Ultralytics YOLO
+2. Экспортирует в ONNX с упрощением (simplify)
+3. Проверяет корректность через ONNX Runtime
+4. Создаёт sidecar `.json` с именами классов
+5. Выводит размеры файлов, входные/выходные тензоры и статус `EXPORT: PASS / FAIL`
 
 ## Данные
 
@@ -125,7 +206,9 @@ anomaly-detector/
 
 ## Разработка
 
-Проект использует `uv` для управления зависимостями. Все зависимости находятся в `app/pyproject.toml`.
+Проект использует `uv` для управления зависимостями.
+
+### Runtime (приложение)
 
 ```powershell
 # Установка зависимостей
@@ -142,6 +225,17 @@ uv run --directory app python -m app
 uv add <package-name>
 ```
 
+### Dev-инструменты (экспорт моделей)
+
+```powershell
+# Экспорт модели в ONNX
+cd tools
+python export_to_onnx.py ..\models\best.pt
+
+# Добавление dev-зависимости
+uv pip install -p .venv\Scripts\python.exe <package-name>
+```
+
 ## Сборка EXE
 
 Проект подготовлен к сборке в portable `.exe` с помощью PyInstaller или аналогичных инструментов.
@@ -152,7 +246,7 @@ uv add <package-name>
 AnomalyDetector/
 ├── AnomalyDetector.exe
 ├── models/
-│   └── *.pt
+│   └── *.onnx
 └── data/
     ├── database/
     ├── output/

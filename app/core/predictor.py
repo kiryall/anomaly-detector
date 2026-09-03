@@ -26,12 +26,12 @@ class Predictor:
 
     def load_model(self, model_path: Path) -> None:
         """Загружает модель по указанному пути."""
-        logger.info("Загрузка модели через Predictor: %s", model_path)
+        logger.info("Загрузка модели: %s", model_path.name)
 
         self._detector = Detector(model_path)
         self._model_path = model_path
 
-        logger.info("Модель загружена через Predictor: %s", model_path)
+        logger.info("Модель загружена: %s", model_path.name)
 
     def predict(
         self,
@@ -49,7 +49,7 @@ class Predictor:
 
     def unload_model(self) -> None:
         """Выгружает текущую модель."""
-        logger.info("Выгрузка модели через Predictor")
+        logger.info("Выгрузка модели")
 
         self._detector = None
         self._model_path = None

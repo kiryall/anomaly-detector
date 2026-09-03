@@ -6,6 +6,7 @@ from app.core.model_manager import ModelManager
 from app.core.pipeline import Pipeline
 from app.core.predictor import Predictor
 from app.reports.report import ReportService
+from app.services.logger import logger
 
 
 class Bootstrap:
@@ -40,17 +41,19 @@ class Bootstrap:
     def load_settings(self):
         """Загрузка настроек пользователя."""
         settings.load_settings()
+        logger.info("Настройки загружены: %s", settings.paths.settings)
 
     def init_model_manager(self):
         """Инициализация менеджера моделей."""
         self.model_manager = ModelManager()
+        count = len(self.model_manager.models)
+        logger.info("Модели обнаружены: %d", count)
+        for m in self.model_manager.models:
+            logger.info("  %s  (%s)", m.filename, m.path)
 
     def configure_logger(self):
         """Настройка логирования."""
-        from app.services.logger import logger
-
-        self.logger = logger
-        self.logger.info("Приложение запущено")
+        logger.info("Приложение запущено")
 
     def init_database(self):
 
