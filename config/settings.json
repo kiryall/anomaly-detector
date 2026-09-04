@@ -1,6 +1,6 @@
 {
     "model": "best",
-    "confidence": 0.95,
+    "confidence": 0.7,
     "iou": 0.5,
     "copy_images": true,
     "save_database": true,

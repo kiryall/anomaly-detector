@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+from multiprocessing import freeze_support
 from pathlib import Path
 
 # pyproject.toml находится в app/, поэтому при запуске из app/
@@ -17,6 +18,7 @@ from app.entrypoint.bootstrap import Bootstrap
 
 
 def main() -> None:
+    freeze_support()
     bootstrap = Bootstrap()
     bootstrap.run()
     from app.ui.ui import MainWindow
@@ -28,5 +30,5 @@ def main() -> None:
     window.run()
 
 
-if __name__ == "__main__":
+if __name__ in {"__main__", "__mp_main__"}:
     main()

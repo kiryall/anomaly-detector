@@ -562,9 +562,11 @@ class MainWindow:
     def run(self) -> None:
         """Запускает NiceGUI."""
 
-        self.build()
+        def root():
+            self.build()
 
         ui.run(
+            root,
             title="Anomaly Detector",
             host="127.0.0.1",
             port=8080,

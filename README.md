@@ -67,17 +67,23 @@ anomaly-detector/
 │   ├── pyproject.toml          # Dev-зависимости (ultralytics)
 │   ├── .venv/                  # Окружение для экспорта
 │   └── run_export.bat          # Скрипт запуска экспорта
-├── tests/                      # Тесты
-│   ├── test_onnx.py            # Regression test PT vs ONNX
-│   └── test_production_onnx.py # Production ONNX runtime test
 ├── models/                     # ONNX-модели (.onnx)
 │   ├── best.onnx               # Модель
 │   └── best.json               # Имена классов (sidecar)
-├── data/                       # Рабочие данные
+├── config/                     # Корневая конфигурация
+│   └── settings.json           # Настройки пользователя
+├── data/                       # Рабочие данные (gitignored)
 │   ├── database/               # База данных
 │   ├── output/                 # Результаты детекции
 │   ├── reports/                # Excel-отчёты
 │   └── logs/                   # Логи приложения
+├── release/                    # Собранный EXE (gitignored)
+│   └── AnomalyDetector/
+│       ├── AnomalyDetector.exe
+│       ├── _internal/          # Зависимости
+│       ├── models/             # Модели
+│       └── data/               # Данные
+├── build.bat                   # Скрипт сборки EXE через PyInstaller
 ├── run.bat                     # Скрипт запуска приложения
 ├── README.md                   # Документация для разработчиков
 └── USER_GUIDE.md               # Инструкция пользователя
@@ -106,6 +112,42 @@ cd anomaly-detector
 ```
 
 Приложение запустится по адресу `http://127.0.0.1:8080`.
+
+## Сборка EXE
+
+Проект собирается в portable `.exe` с помощью PyInstaller через `build.bat`:
+
+```powershell
+cd anomaly-detector
+.\build.bat
+```
+
+Скрипт автоматически:
+1. Установит `pyinstaller` (если не установлен)
+2. Соберёт приложение в режиме `--onedir`
+3. Подключит все зависимости: `nicegui`, `onnxruntime`, `cv2`, `openpyxl`, `pydantic`, `numpy`, `PIL`
+4. Создаст структуру `release/AnomalyDetector/` с папками `models/` и `data/`
+5. Скопирует модели (`best.onnx`, `best.json`), если они есть в корне репозитория
+
+**Ожидаемая структура после сборки:**
+
+```
+release/AnomalyDetector/
+├── AnomalyDetector.exe
+├── _internal/          # Зависимости (cv2, onnxruntime, nicegui и т.д.)
+├── models/
+│   ├── best.onnx
+│   └── best.json
+└── data/
+    ├── database/
+    ├── output/
+    ├── reports/
+    └── logs/
+```
+
+В режиме EXE пути автоматически переключаются:
+- Корень приложения = `Path(sys.executable).parent`
+- Модели и данные находятся рядом с `.exe`
 
 ## Модели
 
@@ -204,6 +246,20 @@ run_export.bat ..\models\best.pt
 
 Каталоги `data/` и `models/` не включены в Git-репозиторий.
 
+## Конфигурация
+
+Настройки хранятся в `config/settings.json`:
+
+| Параметр | Тип | По умолчанию | Описание |
+|----------|-----|:---:|----------|
+| `model` | string | `""` | Имя выбранной модели |
+| `confidence` | float | `0.40` | Порог уверенности (0.0–1.0) |
+| `iou` | float | `0.50` | Порог IoU для NMS (0.0–1.0) |
+| `copy_images` | bool | `true` | Копировать изображения в output |
+| `save_database` | bool | `true` | Сохранять базу данных |
+| `last_folder` | string | `""` | Последняя выбранная папка |
+| `theme` | string | `"dark"` | Тема UI |
+
 ## Разработка
 
 Проект использует `uv` для управления зависимостями.
@@ -235,28 +291,6 @@ python export_to_onnx.py ..\models\best.pt
 # Добавление dev-зависимости
 uv pip install -p .venv\Scripts\python.exe <package-name>
 ```
-
-## Сборка EXE
-
-Проект подготовлен к сборке в portable `.exe` с помощью PyInstaller или аналогичных инструментов.
-
-Ожидаемая структура после сборки:
-
-```
-AnomalyDetector/
-├── AnomalyDetector.exe
-├── models/
-│   └── *.onnx
-└── data/
-    ├── database/
-    ├── output/
-    ├── reports/
-    └── logs/
-```
-
-В режиме EXE пути автоматически переключаются:
-- Корень приложения = `Path(sys.executable).parent`
-- Модели и данные находятся рядом с `.exe`
 
 ## License
 
